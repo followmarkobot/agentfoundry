@@ -199,7 +199,7 @@ export default async function DashboardPage() {
           </span>
         </div>
 
-        <RepoGrid repos={repos} />
+        <RepoGrid repos={repos} accessToken={accessToken} />
       </div>
     </div>
   );

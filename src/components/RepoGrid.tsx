@@ -1,6 +1,12 @@
 import RepoCard, { Repo } from "./RepoCard";
 
-export default function RepoGrid({ repos }: { repos: Repo[] }) {
+export default function RepoGrid({
+  repos,
+  accessToken,
+}: {
+  repos: Repo[];
+  accessToken?: string;
+}) {
   if (repos.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-zinc-300 bg-white p-10 text-center text-sm text-zinc-500">
@@ -12,7 +18,7 @@ export default function RepoGrid({ repos }: { repos: Repo[] }) {
   return (
     <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
       {repos.map((repo) => (
-        <RepoCard key={repo.id} repo={repo} />
+        <RepoCard key={repo.id} repo={repo} accessToken={accessToken} />
       ))}
     </div>
   );
