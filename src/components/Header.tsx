@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { signIn } from "next-auth/react";
-import { useState } from "react";
 
 const categories = [
   {
@@ -73,8 +72,6 @@ const categories = [
 ];
 
 export default function Header() {
-  const [isOpen, setIsOpen] = useState(false);
-
   return (
     <header className="relative flex items-center justify-between px-6 py-6 md:px-12">
       {/* Logo */}
@@ -86,16 +83,14 @@ export default function Header() {
           AgentFoundry
         </Link>
 
-        {/* Browse Agents Dropdown */}
-        <div className="relative">
+        {/* Browse Agents Dropdown - Hover based */}
+        <div className="group relative">
           <button
-            onClick={() => setIsOpen(!isOpen)}
-            onBlur={() => setTimeout(() => setIsOpen(false), 200)}
             className="flex items-center gap-1 text-sm text-zinc-300 transition hover:text-white"
           >
             Browse Agents
             <svg
-              className={`h-4 w-4 transition-transform ${isOpen ? "rotate-180" : ""}`}
+              className="h-4 w-4 transition-transform group-hover:rotate-180"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -106,8 +101,7 @@ export default function Header() {
           </button>
 
           {/* Mega Menu Dropdown */}
-          {isOpen && (
-            <div className="absolute left-0 top-full z-50 mt-4 w-[800px] rounded-xl border border-white/10 bg-[#0a0a0a] p-6 shadow-2xl">
+          <div className="invisible absolute left-0 top-full z-50 mt-4 w-[800px] rounded-xl border border-white/10 bg-[#0a0a0a] p-6 opacity-0 shadow-2xl transition-all duration-200 group-hover:visible group-hover:opacity-100">
               <div className="grid grid-cols-5 gap-6">
                 {categories.map((category) => (
                   <div key={category.name}>
@@ -157,7 +151,6 @@ export default function Header() {
                 </span>
               </div>
             </div>
-          )}
         </div>
       </div>
 

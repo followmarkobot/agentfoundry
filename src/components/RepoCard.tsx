@@ -92,15 +92,22 @@ export default function RepoCard({ repo }: { repo: Repo }) {
         </span>
       </div>
 
-      {/* CTA Button */}
-      <a
-        href={repo.html_url}
-        target="_blank"
-        rel="noreferrer"
-        className="mt-4 flex w-full items-center justify-center rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-green-700"
-      >
-        View Repository
-      </a>
+      {/* CTA Buttons */}
+      <div className="mt-4 flex items-center gap-3">
+        <button
+          className="flex flex-1 items-center justify-center rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-green-700"
+        >
+          Scan Repository
+        </button>
+        <a
+          href={repo.html_url}
+          target="_blank"
+          rel="noreferrer"
+          className="text-sm font-medium text-zinc-500 transition hover:text-zinc-700"
+        >
+          View on GitHub
+        </a>
+      </div>
     </article>
   );
 }
