@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
-import RepoGrid from "@/components/RepoGrid";
+import DashboardControls from "@/components/DashboardControls";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import type { Repo } from "@/components/RepoCard";
 import Link from "next/link";
@@ -199,7 +199,7 @@ export default async function DashboardPage() {
           </span>
         </div>
 
-        <RepoGrid repos={repos} accessToken={accessToken} />
+        <DashboardControls repos={repos} accessToken={accessToken} />
       </div>
     </div>
   );
