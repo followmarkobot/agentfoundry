@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export async function GET() {
+  return NextResponse.json({ status: "issues route alive" });
+}
+
 export async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ owner: string; repo: string }> }
+  context: { params: Promise<{ owner: string; repo: string }> }
 ) {
   try {
-    const { owner, repo } = await params;
+    console.log("Issues route hit");
+    const { owner, repo } = await context.params;
     const { accessToken, title, description, labels } = await req.json();
 
     if (!accessToken || !title) {
