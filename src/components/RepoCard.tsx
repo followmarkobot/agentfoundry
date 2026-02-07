@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState, useRef } from "react";
 
 export type Repo = {
   id: number;
@@ -149,6 +149,8 @@ export default function RepoCard({
     Record<string, { loading?: boolean; url?: string; error?: string }>
   >({});
 
+  const issuePendingRef = React.useRef<Record<string, boolean>>({});
+
   async function handleCreateIssue(
     key: string,
     title: string,
@@ -156,6 +158,8 @@ export default function RepoCard({
     impact: string
   ) {
     if (!accessToken) return;
+    if (issuePendingRef.current[key]) return;
+    issuePendingRef.current[key] = true;
     setIssueStates((s) => ({ ...s, [key]: { loading: true } }));
     try {
       const res = await fetch(
@@ -179,6 +183,8 @@ export default function RepoCard({
         ...s,
         [key]: { error: err instanceof Error ? err.message : "Failed" },
       }));
+    } finally {
+      issuePendingRef.current[key] = false;
     }
   }
 
