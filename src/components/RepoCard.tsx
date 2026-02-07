@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState } from "react";
+import { createGitHubIssue } from "@/app/actions/create-issue";
 
 export type Repo = {
   id: number;
@@ -97,8 +98,6 @@ function CreateIssueButton({
   state?: { loading?: boolean; url?: string; error?: string };
   onClick: () => void;
 }) {
-  const hasFired = useRef(false);
-
   if (state?.url) {
     return (
       <a
@@ -120,11 +119,11 @@ function CreateIssueButton({
   }
   return (
     <button
+      type="button"
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (hasFired.current || state?.loading) return;
-        hasFired.current = true;
+        if (state?.loading) return;
         onClick();
       }}
       disabled={state?.loading}
@@ -170,23 +169,15 @@ export default function RepoCard({
     issuePendingRef.current[key] = true;
     setIssueStates((s) => ({ ...s, [key]: { loading: true } }));
     try {
-      console.log("[DEBUG] About to POST /api/create-issue", { owner: repo.owner.login, repo: repo.name, title });
-      const res = await fetch("/api/create-issue", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          accessToken,
-          owner: repo.owner.login,
-          repo: repo.name,
-          title,
-          description,
-          labels: ["agentfoundry", `${impact}-impact`],
-        }),
+      const data = await createGitHubIssue({
+        accessToken,
+        owner: repo.owner.login,
+        repo: repo.name,
+        title,
+        description,
+        labels: ["agentfoundry", `${impact}-impact`],
       });
-      console.log("[DEBUG] Response status:", res.status, "ok:", res.ok);
-      const data = await res.json();
-      console.log("[DEBUG] Response data:", data);
-      if (!res.ok) throw new Error(data.error || "Failed to create issue");
+      if ("error" in data) throw new Error(data.error);
       setIssueStates((s) => ({ ...s, [key]: { url: data.issueUrl } }));
     } catch (err) {
       setIssueStates((s) => ({
@@ -353,6 +344,7 @@ export default function RepoCard({
           {scanResult.analysis.secondary_recommendations.length > 0 && (
             <div>
               <button
+                type="button"
                 onClick={() => setShowSecondary(!showSecondary)}
                 className="flex items-center gap-1 text-sm text-zinc-600 hover:text-zinc-900 transition"
               >
@@ -430,6 +422,7 @@ export default function RepoCard({
       {/* CTA Buttons */}
       <div className="mt-4 flex items-center gap-3">
         <button
+          type="button"
           onClick={handleScan}
           disabled={isScanning || !accessToken}
           className={`flex flex-1 items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
