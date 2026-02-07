@@ -248,14 +248,14 @@ Stage definitions:
 
 Include 2-3 secondary recommendations. Be specific and actionable.`;
 
-    const completion = await openai.completions.create({
+    const completion = await openai.chat.completions.create({
       model: "gpt-5.2-codex",
-      prompt: prompt,
+      messages: [{ role: "user", content: prompt }],
       max_tokens: 2048,
     });
 
     // Extract text from response
-    const responseText = completion.choices[0]?.text || "";
+    const responseText = completion.choices[0]?.message?.content || "";
 
     // Parse JSON from response
     let result: ScanResult;
