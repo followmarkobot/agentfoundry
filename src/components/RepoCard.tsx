@@ -90,6 +90,50 @@ function getImpactColor(impact: string): string {
   return colors[impact] || "text-zinc-600 bg-zinc-50";
 }
 
+function CreateIssueButton({
+  state,
+  onClick,
+}: {
+  state?: { loading?: boolean; url?: string; error?: string };
+  onClick: () => void;
+}) {
+  if (state?.url) {
+    return (
+      <a
+        href={state.url}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center gap-1 rounded-md border border-green-500 bg-green-50 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-100 transition"
+      >
+        View Issue →
+      </a>
+    );
+  }
+  if (state?.error) {
+    return (
+      <span className="text-xs text-red-500" title={state.error}>
+        ✕ Failed
+      </span>
+    );
+  }
+  return (
+    <button
+      onClick={onClick}
+      disabled={state?.loading}
+      className="inline-flex items-center gap-1 rounded-md border border-green-400 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-50 transition disabled:opacity-50"
+    >
+      {state?.loading ? (
+        <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+        </svg>
+      ) : (
+        "Create Issue"
+      )}
+    </button>
+  );
+}
+
 export default function RepoCard({
   repo,
   accessToken,
@@ -101,6 +145,42 @@ export default function RepoCard({
   const [scanResult, setScanResult] = useState<ScanResponse | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const [showSecondary, setShowSecondary] = useState(false);
+  const [issueStates, setIssueStates] = useState<
+    Record<string, { loading?: boolean; url?: string; error?: string }>
+  >({});
+
+  async function handleCreateIssue(
+    key: string,
+    title: string,
+    description: string,
+    impact: string
+  ) {
+    if (!accessToken) return;
+    setIssueStates((s) => ({ ...s, [key]: { loading: true } }));
+    try {
+      const res = await fetch(
+        `/api/issues/${repo.owner.login}/${repo.name}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            accessToken,
+            title,
+            description,
+            labels: ["agentfoundry", `${impact}-impact`],
+          }),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to create issue");
+      setIssueStates((s) => ({ ...s, [key]: { url: data.issueUrl } }));
+    } catch (err) {
+      setIssueStates((s) => ({
+        ...s,
+        [key]: { error: err instanceof Error ? err.message : "Failed" },
+      }));
+    }
+  }
 
   async function handleScan() {
     if (!accessToken) {
@@ -235,9 +315,22 @@ export default function RepoCard({
             <p className="text-sm text-zinc-600 mb-2">
               {scanResult.analysis.top_recommendation.description}
             </p>
-            <p className="text-xs text-zinc-500">
-              ⏱️ Effort: {scanResult.analysis.top_recommendation.effort}
-            </p>
+            <div className="flex items-center justify-between mt-2">
+              <p className="text-xs text-zinc-500">
+                ⏱️ Effort: {scanResult.analysis.top_recommendation.effort}
+              </p>
+              <CreateIssueButton
+                state={issueStates["top"]}
+                onClick={() =>
+                  handleCreateIssue(
+                    "top",
+                    scanResult.analysis.top_recommendation.title,
+                    scanResult.analysis.top_recommendation.description,
+                    scanResult.analysis.top_recommendation.impact
+                  )
+                }
+              />
+            </div>
           </div>
 
           {/* Secondary Recommendations (Collapsible) */}
@@ -285,9 +378,22 @@ export default function RepoCard({
                         <p className="text-xs text-zinc-600">
                           {rec.description}
                         </p>
-                        <p className="text-xs text-zinc-500 mt-1">
-                          ⏱️ {rec.effort}
-                        </p>
+                        <div className="flex items-center justify-between mt-1">
+                          <p className="text-xs text-zinc-500">
+                            ⏱️ {rec.effort}
+                          </p>
+                          <CreateIssueButton
+                            state={issueStates[`sec-${i}`]}
+                            onClick={() =>
+                              handleCreateIssue(
+                                `sec-${i}`,
+                                rec.title,
+                                rec.description,
+                                rec.impact
+                              )
+                            }
+                          />
+                        </div>
                       </div>
                     )
                   )}
