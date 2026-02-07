@@ -249,9 +249,9 @@ Stage definitions:
 Include 2-3 secondary recommendations. Be specific and actionable.`;
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-5.2-codex",
+      model: "gpt-4o",
       messages: [{ role: "user", content: prompt }],
-      max_tokens: 1024,
+      max_tokens: 2048,
     });
 
     // Extract text from response
