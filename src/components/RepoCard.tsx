@@ -170,6 +170,7 @@ export default function RepoCard({
     issuePendingRef.current[key] = true;
     setIssueStates((s) => ({ ...s, [key]: { loading: true } }));
     try {
+      console.log("[DEBUG] About to POST /api/create-issue", { owner: repo.owner.login, repo: repo.name, title });
       const res = await fetch("/api/create-issue", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -182,7 +183,9 @@ export default function RepoCard({
           labels: ["agentfoundry", `${impact}-impact`],
         }),
       });
+      console.log("[DEBUG] Response status:", res.status, "ok:", res.ok);
       const data = await res.json();
+      console.log("[DEBUG] Response data:", data);
       if (!res.ok) throw new Error(data.error || "Failed to create issue");
       setIssueStates((s) => ({ ...s, [key]: { url: data.issueUrl } }));
     } catch (err) {

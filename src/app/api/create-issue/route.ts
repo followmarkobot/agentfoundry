@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export async function GET() {
+  return NextResponse.json({ status: "create-issue route alive", timestamp: Date.now() });
+}
+
 export async function POST(req: NextRequest) {
+  console.log("[create-issue] POST hit at", new Date().toISOString());
   try {
-    const { accessToken, owner, repo, title, description, labels } =
-      await req.json();
+    const body = await req.json();
+    console.log("[create-issue] Body keys:", Object.keys(body));
+    const { accessToken, owner, repo, title, description, labels } = body;
 
     if (!accessToken || !owner || !repo || !title) {
       return NextResponse.json(
