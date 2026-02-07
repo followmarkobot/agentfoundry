@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import OpenAI from "openai";
 
 // File extensions to include
 const SOURCE_EXTENSIONS = [
@@ -212,9 +211,7 @@ export async function POST(
       concatenated = concatenated.slice(0, 200000) + "\n\n[TRUNCATED]";
     }
 
-    // Call OpenAI API
-    const openai = new OpenAI({ apiKey: openaiKey });
-
+    // Call OpenAI Responses API (required for gpt-5.2-codex)
     const prompt = `Analyze this codebase and return ONLY valid JSON (no markdown, no code blocks, just raw JSON):
 
 ${concatenated}
@@ -248,14 +245,29 @@ Stage definitions:
 
 Include 2-3 secondary recommendations. Be specific and actionable.`;
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-5.2-codex",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 2048,
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${openaiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-5.2-codex",
+        input: prompt,
+      }),
     });
 
-    // Extract text from response
-    const responseText = completion.choices[0]?.message?.content || "";
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error("OpenAI API error:", errorData);
+      throw new Error(`OpenAI API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    // Extract text from Responses API format: data.output[1].content[0].text
+    const messageOutput = data.output?.find((o: { type: string }) => o.type === "message");
+    const responseText = messageOutput?.content?.[0]?.text || "";
 
     // Parse JSON from response
     let result: ScanResult;
