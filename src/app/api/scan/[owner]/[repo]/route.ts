@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 
 // File extensions to include
 const SOURCE_EXTENSIONS = [
@@ -145,11 +145,11 @@ export async function POST(
     );
   }
 
-  // Check for Anthropic API key
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
-  if (!anthropicKey) {
+  // Check for OpenAI API key
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (!openaiKey) {
     return NextResponse.json(
-      { error: "ANTHROPIC_API_KEY not configured" },
+      { error: "OPENAI_API_KEY not configured" },
       { status: 500 }
     );
   }
@@ -207,13 +207,13 @@ export async function POST(
       concatenated += `=== ${file.path} ===\n${file.content}\n\n`;
     }
 
-    // Limit total size to ~100KB for Claude
-    if (concatenated.length > 100000) {
-      concatenated = concatenated.slice(0, 100000) + "\n\n[TRUNCATED]";
+    // Limit total size to ~200KB for GPT
+    if (concatenated.length > 200000) {
+      concatenated = concatenated.slice(0, 200000) + "\n\n[TRUNCATED]";
     }
 
-    // Call Claude API
-    const anthropic = new Anthropic({ apiKey: anthropicKey });
+    // Call OpenAI API
+    const openai = new OpenAI({ apiKey: openaiKey });
 
     const prompt = `Analyze this codebase and return ONLY valid JSON (no markdown, no code blocks, just raw JSON):
 
@@ -248,15 +248,14 @@ Stage definitions:
 
 Include 2-3 secondary recommendations. Be specific and actionable.`;
 
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1024,
+    const completion = await openai.chat.completions.create({
+      model: "gpt-5.2-codex",
       messages: [{ role: "user", content: prompt }],
+      max_tokens: 1024,
     });
 
     // Extract text from response
-    const responseText =
-      message.content[0].type === "text" ? message.content[0].text : "";
+    const responseText = completion.choices[0]?.message?.content || "";
 
     // Parse JSON from response
     let result: ScanResult;
@@ -268,7 +267,7 @@ Include 2-3 secondary recommendations. Be specific and actionable.`;
       }
       result = JSON.parse(jsonMatch[0]);
     } catch (parseError) {
-      console.error("Failed to parse Claude response:", responseText);
+      console.error("Failed to parse OpenAI response:", responseText);
       return NextResponse.json(
         { error: "Failed to parse analysis result" },
         { status: 500 }
