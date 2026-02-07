@@ -97,6 +97,8 @@ function CreateIssueButton({
   state?: { loading?: boolean; url?: string; error?: string };
   onClick: () => void;
 }) {
+  const hasFired = useRef(false);
+
   if (state?.url) {
     return (
       <a
@@ -118,7 +120,13 @@ function CreateIssueButton({
   }
   return (
     <button
-      onClick={onClick}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (hasFired.current || state?.loading) return;
+        hasFired.current = true;
+        onClick();
+      }}
       disabled={state?.loading}
       className="inline-flex items-center gap-1 rounded-md border border-green-400 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-50 transition disabled:opacity-50"
     >
