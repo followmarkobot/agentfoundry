@@ -12,10 +12,10 @@ function TestPostButton() {
     setLoading(true);
     setResult(null);
     try {
-      const res = await fetch(`${BASE_URL}/api/ping`, {
+      const res = await fetch(`${BASE_URL}/api/create-issue`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ hello: "world" }),
+        body: JSON.stringify({ accessToken: "test", owner: "test", repo: "test", title: "test" }),
       });
       const data = await res.json();
       setResult(`${res.status} — ${JSON.stringify(data)}`);
