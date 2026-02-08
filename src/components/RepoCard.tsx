@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || "";
+import React, { useState, useRef } from "react";
+import { scanRepository, createIssue, type ScanResponse } from "@/lib/api";
 
 export type Repo = {
   id: number;
@@ -16,32 +16,6 @@ export type Repo = {
   owner: {
     login: string;
     avatar_url: string;
-  };
-};
-
-type ScanResult = {
-  stage: "idea" | "prototype" | "mvp" | "growth" | "mature";
-  stage_reasoning: string;
-  top_recommendation: {
-    title: string;
-    description: string;
-    impact: "high" | "medium" | "low";
-    effort: string;
-  };
-  secondary_recommendations: Array<{
-    title: string;
-    description: string;
-    impact: "high" | "medium" | "low";
-    effort: string;
-  }>;
-};
-
-type ScanResponse = {
-  success: boolean;
-  analysis: ScanResult;
-  meta: {
-    filesScanned: number;
-    totalFiles: number;
   };
 };
 
@@ -169,20 +143,14 @@ export default function RepoCard({
     issuePendingRef.current[key] = true;
     setIssueStates((s) => ({ ...s, [key]: { loading: true } }));
     try {
-      const res = await fetch(`${BASE_URL}/api/create-issue`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          accessToken,
-          owner: repo.owner.login,
-          repo: repo.name,
-          title,
-          description,
-          labels: ["agentfoundry", `${impact}-impact`],
-        }),
+      const data = await createIssue({
+        accessToken,
+        owner: repo.owner.login,
+        repo: repo.name,
+        title,
+        description,
+        labels: ["agentfoundry", `${impact}-impact`],
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to create issue");
       setIssueStates((s) => ({ ...s, [key]: { url: data.issueUrl } }));
     } catch (err) {
       setIssueStates((s) => ({
@@ -204,18 +172,7 @@ export default function RepoCard({
     setScanError(null);
 
     try {
-      const res = await fetch(`/api/scan/${repo.owner.login}/${repo.name}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessToken }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Scan failed");
-      }
-
+      const data = await scanRepository(repo.owner.login, repo.name, accessToken);
       setScanResult(data);
     } catch (err) {
       setScanError(err instanceof Error ? err.message : "Scan failed");
