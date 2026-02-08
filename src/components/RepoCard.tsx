@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { createGitHubIssue } from "@/app/actions/create-issue";
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || "";
 
 export type Repo = {
   id: number;
@@ -169,15 +169,20 @@ export default function RepoCard({
     issuePendingRef.current[key] = true;
     setIssueStates((s) => ({ ...s, [key]: { loading: true } }));
     try {
-      const data = await createGitHubIssue({
-        accessToken,
-        owner: repo.owner.login,
-        repo: repo.name,
-        title,
-        description,
-        labels: ["agentfoundry", `${impact}-impact`],
+      const res = await fetch(`${BASE_URL}/api/create-issue`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accessToken,
+          owner: repo.owner.login,
+          repo: repo.name,
+          title,
+          description,
+          labels: ["agentfoundry", `${impact}-impact`],
+        }),
       });
-      if ("error" in data) throw new Error(data.error);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to create issue");
       setIssueStates((s) => ({ ...s, [key]: { url: data.issueUrl } }));
     } catch (err) {
       setIssueStates((s) => ({
