@@ -3,6 +3,39 @@
 import { useState, useMemo } from "react";
 import RepoCard, { Repo } from "./RepoCard";
 
+function TestPostButton() {
+  const [result, setResult] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || "";
+
+  async function handleTest() {
+    setLoading(true);
+    setResult(null);
+    try {
+      const res = await fetch(`${BASE_URL}/api/create-issue`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessToken: "test", owner: "test", repo: "test", title: "test" }),
+      });
+      setResult(`${res.status} ${res.statusText}`);
+    } catch (err) {
+      setResult(`Error: ${err instanceof Error ? err.message : "unknown"}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <button
+      onClick={handleTest}
+      disabled={loading}
+      className="rounded-md border border-yellow-400 bg-yellow-50 px-3 py-1.5 text-xs font-medium text-yellow-700 hover:bg-yellow-100 transition disabled:opacity-50"
+    >
+      {loading ? "Testing..." : result ? `POST → ${result}` : "🧪 Test POST /api/create-issue"}
+    </button>
+  );
+}
+
 type SortOption = "updated" | "stars" | "name" | "created";
 
 const sortLabels: Record<SortOption, string> = {
@@ -240,7 +273,8 @@ export default function DashboardControls({
             {filterVisibility === "all" ? "Visibility" : filterVisibility === "public" ? "Public" : "Private"}
           </button>
 
-          {/* Clear all */}
+          {/* Test + Clear all */}
+          <TestPostButton />
           {(hasSearch || hasFilters) && (
             <button onClick={clearAll} className="ml-auto text-xs text-zinc-500 hover:text-zinc-700 transition underline">
               Clear all ({activeCount})
