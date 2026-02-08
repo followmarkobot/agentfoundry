@@ -52,7 +52,9 @@ export async function createIssue(params: {
   description: string;
   labels: string[];
 }): Promise<{ issueUrl: string; issueNumber: number }> {
-  const res = await fetch(`${BASE_URL}/api/create-issue`, {
+  const url = `${BASE_URL}/api/create-issue`;
+  console.log("[createIssue] URL:", url, "BASE_URL:", JSON.stringify(BASE_URL), "params:", JSON.stringify(params).slice(0, 100));
+  const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
