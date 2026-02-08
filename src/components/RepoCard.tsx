@@ -67,10 +67,12 @@ function getImpactColor(impact: string): string {
 
 function CreateIssueButton({
   state,
-  onClick,
+  issueKey,
+  onCreateIssue,
 }: {
   state?: { loading?: boolean; url?: string; error?: string };
-  onClick: () => void;
+  issueKey: string;
+  onCreateIssue: (key: string) => void;
 }) {
   if (state?.url) {
     return (
@@ -98,7 +100,7 @@ function CreateIssueButton({
         e.preventDefault();
         e.stopPropagation();
         if (state?.loading) return;
-        onClick();
+        onCreateIssue(issueKey);
       }}
       disabled={state?.loading}
       className="inline-flex items-center gap-1 rounded-md border border-green-400 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-50 transition disabled:opacity-50"
@@ -131,16 +133,24 @@ export default function RepoCard({
   >({});
 
   const issuePendingRef = React.useRef<Record<string, boolean>>({});
+  const recommendationsRef = React.useRef<Record<string, { title: string; description: string; impact: string }>>({});
 
-  async function handleCreateIssue(
-    key: string,
-    title: string,
-    description: string,
-    impact: string
-  ) {
-    if (!accessToken) return;
+  // Update recommendations ref when scan results change
+  React.useEffect(() => {
+    if (!scanResult) return;
+    const rec = scanResult.analysis.top_recommendation;
+    recommendationsRef.current["top"] = { title: rec.title, description: rec.description, impact: rec.impact };
+    scanResult.analysis.secondary_recommendations.forEach((r, i) => {
+      recommendationsRef.current[`sec-${i}`] = { title: r.title, description: r.description, impact: r.impact };
+    });
+  }, [scanResult]);
+
+  async function handleCreateIssue(key: string) {
+    const rec = recommendationsRef.current[key];
+    if (!accessToken || !rec) return;
     if (issuePendingRef.current[key]) return;
     issuePendingRef.current[key] = true;
+    const { title, description, impact } = rec;
     setIssueStates((s) => ({ ...s, [key]: { loading: true } }));
     try {
       const data = await createIssue({
@@ -290,14 +300,8 @@ export default function RepoCard({
               </p>
               <CreateIssueButton
                 state={issueStates["top"]}
-                onClick={() =>
-                  handleCreateIssue(
-                    "top",
-                    scanResult.analysis.top_recommendation.title,
-                    scanResult.analysis.top_recommendation.description,
-                    scanResult.analysis.top_recommendation.impact
-                  )
-                }
+                issueKey="top"
+                onCreateIssue={handleCreateIssue}
               />
             </div>
           </div>
@@ -354,14 +358,8 @@ export default function RepoCard({
                           </p>
                           <CreateIssueButton
                             state={issueStates[`sec-${i}`]}
-                            onClick={() =>
-                              handleCreateIssue(
-                                `sec-${i}`,
-                                rec.title,
-                                rec.description,
-                                rec.impact
-                              )
-                            }
+                            issueKey={`sec-${i}`}
+                            onCreateIssue={handleCreateIssue}
                           />
                         </div>
                       </div>
