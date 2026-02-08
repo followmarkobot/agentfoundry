@@ -12,12 +12,13 @@ function TestPostButton() {
     setLoading(true);
     setResult(null);
     try {
-      const res = await fetch(`${BASE_URL}/api/create-issue`, {
+      const res = await fetch(`${BASE_URL}/api/ping`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessToken: "test", owner: "test", repo: "test", title: "test" }),
+        body: JSON.stringify({ hello: "world" }),
       });
-      setResult(`${res.status} ${res.statusText}`);
+      const data = await res.json();
+      setResult(`${res.status} — ${JSON.stringify(data)}`);
     } catch (err) {
       setResult(`Error: ${err instanceof Error ? err.message : "unknown"}`);
     } finally {
@@ -31,7 +32,7 @@ function TestPostButton() {
       disabled={loading}
       className="rounded-md border border-yellow-400 bg-yellow-50 px-3 py-1.5 text-xs font-medium text-yellow-700 hover:bg-yellow-100 transition disabled:opacity-50"
     >
-      {loading ? "Testing..." : result ? `POST → ${result}` : "🧪 Test POST /api/create-issue"}
+      {loading ? "Testing..." : result ? `🧪 ${result}` : "🧪 Test POST"}
     </button>
   );
 }
