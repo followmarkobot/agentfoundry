@@ -44,6 +44,27 @@ export async function scanRepository(
   return data;
 }
 
+export type PackResponse = {
+  success: boolean;
+  content: string;
+  meta: { filesIncluded: number; totalFiles: number };
+};
+
+export async function packRepository(
+  owner: string,
+  repo: string,
+  accessToken: string
+): Promise<PackResponse> {
+  const res = await fetch(`${BASE_URL}/api/pack/${owner}/${repo}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ accessToken }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Pack failed");
+  return data;
+}
+
 export async function createIssue(params: {
   accessToken: string;
   owner: string;

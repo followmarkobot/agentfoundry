@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef } from "react";
-import { scanRepository, createIssue, type ScanResponse } from "@/lib/api";
+import { scanRepository, createIssue, packRepository, type ScanResponse, type PackResponse } from "@/lib/api";
 
 export type Repo = {
   id: number;
@@ -139,6 +139,11 @@ export default function RepoCard({
   const [issueStates, setIssueStates] = useState<
     Record<string, { loading?: boolean; url?: string; error?: string }>
   >({});
+  const [isPacking, setIsPacking] = useState(false);
+  const [packResult, setPackResult] = useState<PackResponse | null>(null);
+  const [packError, setPackError] = useState<string | null>(null);
+  const [showPackModal, setShowPackModal] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const issuePendingRef = React.useRef<Record<string, boolean>>({});
   const recommendationsRef = React.useRef<Record<string, { title: string; description: string; impact: string }>>({});
@@ -199,7 +204,54 @@ export default function RepoCard({
     }
   }
 
+  async function handlePack() {
+    if (!accessToken) { setPackError("Not authenticated"); return; }
+    setIsPacking(true);
+    setPackError(null);
+    try {
+      const data = await packRepository(repo.owner.login, repo.name, accessToken);
+      setPackResult(data);
+      setShowPackModal(true);
+    } catch (err) {
+      setPackError(err instanceof Error ? err.message : "Pack failed");
+    } finally {
+      setIsPacking(false);
+    }
+  }
+
+  async function handleCopy() {
+    if (!packResult) return;
+    await navigator.clipboard.writeText(packResult.content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
   return (
+    <>
+    {/* Pack Modal */}
+    {showPackModal && packResult && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowPackModal(false)}>
+        <div className="relative mx-4 flex max-h-[90vh] w-full max-w-4xl flex-col rounded-xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center justify-between border-b px-6 py-4">
+            <div>
+              <h2 className="text-lg font-semibold text-zinc-900">AI Format — {repo.full_name}</h2>
+              <p className="text-sm text-zinc-500">{packResult.meta.filesIncluded} / {packResult.meta.totalFiles} files included</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={handleCopy} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 transition">
+                {copied ? "✓ Copied!" : "Copy to Clipboard"}
+              </button>
+              <button onClick={() => setShowPackModal(false)} className="rounded-lg p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 transition">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 overflow-auto p-6">
+            <pre className="whitespace-pre-wrap break-words text-sm text-zinc-800 font-mono bg-zinc-50 rounded-lg p-4 border border-zinc-200">{packResult.content}</pre>
+          </div>
+        </div>
+      </div>
+    )}
     <article className={`flex flex-col rounded-xl border p-5 shadow-sm transition hover:shadow-md ${isArchived ? "border-zinc-300 bg-zinc-50 opacity-60" : "border-zinc-200 bg-white"}`}>
       {/* Header: Avatar + Name + Pin/Archive */}
       <div className="flex items-start gap-4">
@@ -462,15 +514,31 @@ export default function RepoCard({
             "Scan Repository"
           )}
         </button>
+        <button
+          type="button"
+          onClick={handlePack}
+          disabled={isPacking || !accessToken}
+          className={`text-sm font-medium transition ${isPacking || !accessToken ? "text-zinc-300 cursor-not-allowed" : "text-blue-600 hover:text-blue-800"}`}
+        >
+          {isPacking ? "Packing..." : "View AI Format"}
+        </button>
         <a
           href={repo.html_url}
           target="_blank"
           rel="noreferrer"
           className="text-sm font-medium text-zinc-500 transition hover:text-zinc-700"
         >
-          View on GitHub
+          GitHub
         </a>
       </div>
+
+      {/* Pack Error */}
+      {packError && (
+        <div className="mt-2 p-2 rounded-lg bg-red-50 border border-red-200">
+          <p className="text-xs text-red-600">{packError}</p>
+        </div>
+      )}
     </article>
+    </>
   );
 }
