@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import RepoCard, { Repo } from "./RepoCard";
+import { loadPreferences, togglePin, toggleArchive, type RepoPreferences } from "@/lib/repo-preferences";
 
 function TestPostButton() {
   const [result, setResult] = useState<string | null>(null);
@@ -49,9 +50,11 @@ const sortLabels: Record<SortOption, string> = {
 export default function DashboardControls({
   repos,
   accessToken,
+  userId,
 }: {
   repos: Repo[];
   accessToken?: string;
+  userId?: string;
 }) {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("updated");
@@ -60,6 +63,22 @@ export default function DashboardControls({
   const [filterHasDescription, setFilterHasDescription] = useState(false);
   const [filterHasStars, setFilterHasStars] = useState(false);
   const [filterVisibility, setFilterVisibility] = useState<"all" | "public" | "private">("all");
+  const [showArchived, setShowArchived] = useState(false);
+  const [prefs, setPrefs] = useState<RepoPreferences>({ pinned: [], archived: [] });
+
+  const userKey = userId || "default";
+
+  useEffect(() => {
+    setPrefs(loadPreferences(userKey));
+  }, [userKey]);
+
+  const handleTogglePin = useCallback((repoId: number) => {
+    setPrefs(togglePin(userKey, repoId));
+  }, [userKey]);
+
+  const handleToggleArchive = useCallback((repoId: number) => {
+    setPrefs(toggleArchive(userKey, repoId));
+  }, [userKey]);
 
   // Auto-detect languages
   const languages = useMemo(() => {
@@ -72,10 +91,16 @@ export default function DashboardControls({
   const hasSearch = search.trim().length > 0;
   const hasFilters = selectedLanguages.size > 0 || filterHasDescription || filterHasStars || filterVisibility !== "all";
   const activeCount = (hasSearch ? 1 : 0) + (selectedLanguages.size) + (filterHasDescription ? 1 : 0) + (filterHasStars ? 1 : 0) + (filterVisibility !== "all" ? 1 : 0);
+  const archivedCount = repos.filter((r) => prefs.archived.includes(r.id)).length;
 
   // Filter + sort
   const filtered = useMemo(() => {
     let result = [...repos];
+
+    // Hide archived unless toggled
+    if (!showArchived) {
+      result = result.filter((r) => !prefs.archived.includes(r.id));
+    }
 
     // Search
     if (hasSearch) {
@@ -112,6 +137,11 @@ export default function DashboardControls({
 
     // Sort
     result.sort((a, b) => {
+      // Pinned repos always first
+      const aPinned = prefs.pinned.includes(a.id) ? 1 : 0;
+      const bPinned = prefs.pinned.includes(b.id) ? 1 : 0;
+      if (aPinned !== bPinned) return bPinned - aPinned;
+
       switch (sort) {
         case "updated":
           return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
@@ -127,7 +157,7 @@ export default function DashboardControls({
     });
 
     return result;
-  }, [repos, search, sort, selectedLanguages, filterHasDescription, filterHasStars, filterVisibility, hasSearch]);
+  }, [repos, search, sort, selectedLanguages, filterHasDescription, filterHasStars, filterVisibility, hasSearch, prefs, showArchived]);
 
   function toggleLanguage(lang: string) {
     setSelectedLanguages((prev) => {
@@ -274,6 +304,20 @@ export default function DashboardControls({
             {filterVisibility === "all" ? "Visibility" : filterVisibility === "public" ? "Public" : "Private"}
           </button>
 
+          {/* Show archived toggle */}
+          {archivedCount > 0 && (
+            <button
+              onClick={() => setShowArchived(!showArchived)}
+              className={`rounded-full px-3 py-1 text-xs font-medium border transition ${
+                showArchived
+                  ? "border-amber-400 bg-amber-50 text-amber-700"
+                  : "border-zinc-200 bg-zinc-50 text-zinc-600 hover:border-zinc-300"
+              }`}
+            >
+              {showArchived ? "Hide" : "Show"} archived ({archivedCount})
+            </button>
+          )}
+
           {/* Test + Clear all */}
           <TestPostButton />
           {(hasSearch || hasFilters) && (
@@ -307,7 +351,15 @@ export default function DashboardControls({
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
           {filtered.map((repo) => (
-            <RepoCard key={repo.id} repo={repo} accessToken={accessToken} />
+            <RepoCard
+              key={repo.id}
+              repo={repo}
+              accessToken={accessToken}
+              isPinned={prefs.pinned.includes(repo.id)}
+              isArchived={prefs.archived.includes(repo.id)}
+              onTogglePin={handleTogglePin}
+              onToggleArchive={handleToggleArchive}
+            />
           ))}
         </div>
       )}

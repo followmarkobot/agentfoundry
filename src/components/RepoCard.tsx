@@ -120,9 +120,17 @@ function CreateIssueButton({
 export default function RepoCard({
   repo,
   accessToken,
+  isPinned,
+  isArchived,
+  onTogglePin,
+  onToggleArchive,
 }: {
   repo: Repo;
   accessToken?: string;
+  isPinned?: boolean;
+  isArchived?: boolean;
+  onTogglePin?: (repoId: number) => void;
+  onToggleArchive?: (repoId: number) => void;
 }) {
   const [isScanning, setIsScanning] = useState(false);
   const [scanResult, setScanResult] = useState<ScanResponse | null>(null);
@@ -192,8 +200,8 @@ export default function RepoCard({
   }
 
   return (
-    <article className="flex flex-col rounded-xl border border-zinc-200 bg-white p-5 shadow-sm transition hover:shadow-md">
-      {/* Header: Avatar + Name */}
+    <article className={`flex flex-col rounded-xl border p-5 shadow-sm transition hover:shadow-md ${isArchived ? "border-zinc-300 bg-zinc-50 opacity-60" : "border-zinc-200 bg-white"}`}>
+      {/* Header: Avatar + Name + Pin/Archive */}
       <div className="flex items-start gap-4">
         <img
           src={repo.owner.avatar_url}
@@ -201,10 +209,43 @@ export default function RepoCard({
           className="h-12 w-12 rounded-full"
         />
         <div className="flex-1 min-w-0">
-          <h3 className="text-base font-semibold text-zinc-900 truncate">
-            {repo.name}
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-base font-semibold text-zinc-900 truncate">
+              {repo.name}
+            </h3>
+            {isPinned && (
+              <span className="text-green-600" title="Pinned">
+                <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>
+              </span>
+            )}
+            {isArchived && (
+              <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500 uppercase">Archived</span>
+            )}
+          </div>
           <p className="text-sm text-zinc-500">{repo.owner.login}</p>
+        </div>
+        {/* Pin/Archive buttons */}
+        <div className="flex items-center gap-1 shrink-0">
+          {onTogglePin && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onTogglePin(repo.id); }}
+              title={isPinned ? "Unpin" : "Pin"}
+              className={`rounded-md p-1.5 transition ${isPinned ? "text-green-600 bg-green-50 hover:bg-green-100" : "text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100"}`}
+            >
+              <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>
+            </button>
+          )}
+          {onToggleArchive && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onToggleArchive(repo.id); }}
+              title={isArchived ? "Unarchive" : "Archive"}
+              className={`rounded-md p-1.5 transition ${isArchived ? "text-amber-600 bg-amber-50 hover:bg-amber-100" : "text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100"}`}
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-2-3H6L4 7m16 0v12a1 1 0 01-1 1H5a1 1 0 01-1-1V7m16 0H4m5 4h6"/></svg>
+            </button>
+          )}
         </div>
       </div>
 

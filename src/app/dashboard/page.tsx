@@ -199,7 +199,7 @@ export default async function DashboardPage() {
           </span>
         </div>
 
-        <DashboardControls repos={repos} accessToken={accessToken} />
+        <DashboardControls repos={repos} accessToken={accessToken} userId={session.user?.name || session.user?.email || "default"} />
       </div>
     </div>
   );
