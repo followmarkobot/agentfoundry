@@ -305,7 +305,14 @@ export default function RepoCard({
           <div className="flex items-center justify-between border-b px-6 py-4">
             <div>
               <h2 className="text-lg font-semibold text-zinc-900">AI Format — {repo.full_name}</h2>
-              <p className="text-sm text-zinc-500">{packResult.meta.filesIncluded} / {packResult.meta.totalFiles} files included</p>
+              <div className="flex flex-wrap gap-3 text-sm text-zinc-500">
+                <span>{packResult.meta.filesIncluded} / {packResult.meta.totalFiles} files</span>
+                {packResult.meta.lines && <span>📝 {packResult.meta.lines.toLocaleString()} lines</span>}
+                {packResult.meta.chars && <span>📊 {packResult.meta.chars.toLocaleString()} chars</span>}
+                {packResult.meta.words && <span>💬 {packResult.meta.words.toLocaleString()} words</span>}
+                {packResult.meta.sizeKB && <span>📦 {packResult.meta.sizeKB} KB</span>}
+                {packResult.meta.estimatedTokens && <span>🤖 ~{packResult.meta.estimatedTokens.toLocaleString()} tokens</span>}
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <button onClick={handleCopy} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 transition">

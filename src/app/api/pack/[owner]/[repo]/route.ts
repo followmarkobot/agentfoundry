@@ -108,23 +108,60 @@ export async function POST(
       fileContents.push(...results.filter((r) => r.content));
     }
 
-    // Build repomix-style output
-    let output = `# Repository: ${owner}/${repo}\n\n`;
-    output += `## File Tree (${tree.filter(i => i.type === "blob").length} files total, ${fileContents.length} included)\n\n`;
+    // Calculate stats
+    const totalLines = fileContents.reduce((sum, f) => sum + f.content.split("\n").length, 0);
+    const totalChars = fileContents.reduce((sum, f) => sum + f.content.length, 0);
+    const totalWords = fileContents.reduce((sum, f) => sum + f.content.split(/\s+/).filter(Boolean).length, 0);
+    const totalBytes = new TextEncoder().encode(fileContents.map(f => f.content).join("")).byteLength;
+    const totalFilesInRepo = tree.filter(i => i.type === "blob").length;
+
+    // Build repomix-style output with preamble
+    let output = "";
+
+    // Preamble
+    output += `This file is a merged representation of the entire codebase, combined into a single document by AgentFoundry.\n\n`;
+    output += `================================================================\n`;
+    output += `Repository: ${owner}/${repo}\n`;
+    output += `================================================================\n\n`;
+    output += `## How to Use This File\n\n`;
+    output += `This file contains the complete source code of the repository in a format optimized for AI consumption.\n`;
+    output += `You can paste this into any LLM (ChatGPT, Claude, Gemini, etc.) and ask questions about the codebase,\n`;
+    output += `request code reviews, ask for refactoring suggestions, or generate documentation.\n\n`;
+    output += `## Repository Stats\n\n`;
+    output += `- **Files included:** ${fileContents.length} / ${totalFilesInRepo} total\n`;
+    output += `- **Lines of code:** ${totalLines.toLocaleString()}\n`;
+    output += `- **Characters:** ${totalChars.toLocaleString()}\n`;
+    output += `- **Words:** ${totalWords.toLocaleString()}\n`;
+    output += `- **Size:** ${(totalBytes / 1024).toFixed(1)} KB\n`;
+    output += `- **Estimated tokens:** ~${Math.round(totalChars / 4).toLocaleString()}\n\n`;
+
+    // File tree
+    output += `## File Tree\n\n`;
     output += "```\n";
     output += sourceFiles.map((f) => f.path).join("\n");
     output += "\n```\n\n";
 
+    // File contents
+    output += `## Source Files\n\n`;
     for (const file of fileContents) {
       const lang = getLanguageFromExt(file.path);
-      output += `## ${file.path}\n\n`;
+      const lines = file.content.split("\n").length;
+      output += `### ${file.path} (${lines} lines)\n\n`;
       output += `\`\`\`${lang}\n${file.content}\n\`\`\`\n\n`;
     }
 
     return NextResponse.json({
       success: true,
       content: output,
-      meta: { filesIncluded: fileContents.length, totalFiles: tree.filter((i) => i.type === "blob").length },
+      meta: {
+        filesIncluded: fileContents.length,
+        totalFiles: totalFilesInRepo,
+        lines: totalLines,
+        chars: totalChars,
+        words: totalWords,
+        sizeKB: Math.round(totalBytes / 1024),
+        estimatedTokens: Math.round(totalChars / 4),
+      },
     });
   } catch (error) {
     console.error("Pack error:", error);
