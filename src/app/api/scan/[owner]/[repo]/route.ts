@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { fetchRepoFiles } from "@/lib/github-tarball";
 
 // File extensions to include
 const SOURCE_EXTENSIONS = [
@@ -20,13 +21,6 @@ const SKIP_FILES = [
   "Cargo.lock", "Gemfile.lock", "poetry.lock", "composer.lock",
 ];
 
-interface GitHubTreeItem {
-  path: string;
-  type: "blob" | "tree";
-  sha: string;
-  size?: number;
-}
-
 interface ScanResult {
   stage: "idea" | "prototype" | "mvp" | "growth" | "mature";
   stage_reasoning: string;
@@ -46,79 +40,21 @@ interface ScanResult {
   }>;
 }
 
-async function fetchGitHubFile(
-  owner: string,
-  repo: string,
-  path: string,
-  token: string
-): Promise<string | null> {
-  try {
-    const res = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/contents/${path}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/vnd.github.v3.raw",
-        },
-      }
-    );
-    if (!res.ok) return null;
-    return await res.text();
-  } catch {
-    return null;
-  }
-}
-
-async function fetchFileTree(
-  owner: string,
-  repo: string,
-  token: string
-): Promise<GitHubTreeItem[]> {
-  const res = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/git/trees/HEAD?recursive=1`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/vnd.github.v3+json",
-      },
-    }
-  );
-  if (!res.ok) {
-    throw new Error(`Failed to fetch file tree: ${res.status}`);
-  }
-  const data = await res.json();
-  return data.tree || [];
-}
-
-function shouldIncludeFile(path: string): boolean {
-  // Skip directories matching patterns
+function shouldIncludeFile(filePath: string): boolean {
   for (const pattern of SKIP_PATTERNS) {
-    if (path.includes(`/${pattern}/`) || path.startsWith(`${pattern}/`)) {
+    if (filePath.includes(`/${pattern}/`) || filePath.startsWith(`${pattern}/`)) {
       return false;
     }
   }
-
-  // Skip specific lock files
-  const filename = path.split("/").pop() || "";
-  if (SKIP_FILES.includes(filename)) {
-    return false;
-  }
-
-  // Skip images and binary files
+  const filename = filePath.split("/").pop() || "";
+  if (SKIP_FILES.includes(filename)) return false;
   const binaryExtensions = [".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".eot", ".mp3", ".mp4", ".webm", ".pdf", ".zip", ".tar", ".gz"];
   for (const ext of binaryExtensions) {
-    if (path.toLowerCase().endsWith(ext)) {
-      return false;
-    }
+    if (filePath.toLowerCase().endsWith(ext)) return false;
   }
-
-  // Include if it has a source extension
   for (const ext of SOURCE_EXTENSIONS) {
-    if (path.endsWith(ext)) {
-      return true;
-    }
+    if (filePath.endsWith(ext)) return true;
   }
-
   return false;
 }
 
@@ -156,34 +92,15 @@ export async function POST(
   }
 
   try {
-    // Fetch file tree
-    const tree = await fetchFileTree(owner, repo, accessToken);
+    // Download entire repo as tarball (1 API call) and stream-extract
+    const { files: allFiles, totalFiles: totalFilesInRepo } = await fetchRepoFiles(
+      owner, repo, accessToken, shouldIncludeFile, 50
+    );
 
-    // Filter to source files only
-    const sourceFiles = tree
-      .filter((item) => item.type === "blob" && shouldIncludeFile(item.path))
-      .slice(0, 50);
-
-    // Fetch README.md and package.json explicitly
-    const [readme, packageJson] = await Promise.all([
-      fetchGitHubFile(owner, repo, "README.md", accessToken),
-      fetchGitHubFile(owner, repo, "package.json", accessToken),
-    ]);
-
-    // Fetch source file contents in parallel (batched to avoid rate limits)
-    const fileContents: Array<{ path: string; content: string }> = [];
-    const batchSize = 10;
-
-    for (let i = 0; i < sourceFiles.length; i += batchSize) {
-      const batch = sourceFiles.slice(i, i + batchSize);
-      const results = await Promise.all(
-        batch.map(async (file) => {
-          const content = await fetchGitHubFile(owner, repo, file.path, accessToken);
-          return { path: file.path, content: content || "" };
-        })
-      );
-      fileContents.push(...results.filter((r) => r.content));
-    }
+    // Separate out README and package.json for prominent display
+    const readme = allFiles.find(f => f.path === "README.md")?.content;
+    const packageJson = allFiles.find(f => f.path === "package.json")?.content;
+    const fileContents = allFiles;
 
     // Build concatenated content
     let concatenated = "";
@@ -196,12 +113,8 @@ export async function POST(
       concatenated += `=== package.json ===\n${packageJson}\n\n`;
     }
 
-    concatenated += `=== File Tree (${tree.length} items) ===\n`;
-    concatenated += tree
-      .filter((item) => item.type === "blob")
-      .map((item) => item.path)
-      .slice(0, 200)
-      .join("\n");
+    concatenated += `=== File Tree (${totalFilesInRepo} items) ===\n`;
+    concatenated += allFiles.map(f => f.path).join("\n");
     concatenated += "\n\n";
 
     for (const file of fileContents) {
@@ -297,7 +210,7 @@ For each recommendation, include 3-5 relevant file paths from the codebase that 
       analysis: result,
       meta: {
         filesScanned: fileContents.length,
-        totalFiles: tree.filter((i) => i.type === "blob").length,
+        totalFiles: totalFilesInRepo,
       },
     });
   } catch (error) {

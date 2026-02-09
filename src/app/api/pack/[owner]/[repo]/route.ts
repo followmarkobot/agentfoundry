@@ -3,6 +3,7 @@ import { pack } from "repomix";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import { fetchRepoFiles } from "@/lib/github-tarball";
 
 const SOURCE_EXTENSIONS = [
   ".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".rs", ".rb", ".java",
@@ -21,32 +22,6 @@ const SKIP_FILES = [
   "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "bun.lockb",
   "Cargo.lock", "Gemfile.lock", "poetry.lock", "composer.lock",
 ];
-
-interface GitHubTreeItem {
-  path: string;
-  type: "blob" | "tree";
-  sha: string;
-  size?: number;
-}
-
-async function fetchGitHubFile(owner: string, repo: string, filePath: string, token: string): Promise<string | null> {
-  try {
-    const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github.v3.raw" },
-    });
-    if (!res.ok) return null;
-    return await res.text();
-  } catch { return null; }
-}
-
-async function fetchFileTree(owner: string, repo: string, token: string): Promise<GitHubTreeItem[]> {
-  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/HEAD?recursive=1`, {
-    headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github.v3+json" },
-  });
-  if (!res.ok) throw new Error(`Failed to fetch file tree: ${res.status}`);
-  const data = await res.json();
-  return data.tree || [];
-}
 
 function shouldIncludeFile(filePath: string): boolean {
   for (const pattern of SKIP_PATTERNS) {
@@ -87,32 +62,17 @@ export async function POST(
   const outFile = path.join(os.tmpdir(), `repomix-out-${owner}-${repo}-${Date.now()}.xml`);
 
   try {
-    // Fetch file tree from GitHub
-    const tree = await fetchFileTree(owner, repo, accessToken);
-    const totalFilesInRepo = tree.filter(i => i.type === "blob").length;
-    const sourceFiles = tree.filter((item) => item.type === "blob" && shouldIncludeFile(item.path)).slice(0, 100);
+    // Download entire repo as tarball (1 API call) and stream-extract
+    const { files, totalFiles: totalFilesInRepo } = await fetchRepoFiles(
+      owner, repo, accessToken, shouldIncludeFile, 100
+    );
 
-    // Download files to /tmp
+    // Write extracted files to /tmp for repomix
     mkdirpSync(tmpDir);
-    const batchSize = 10;
-    let filesWritten = 0;
-
-    for (let i = 0; i < sourceFiles.length; i += batchSize) {
-      const batch = sourceFiles.slice(i, i + batchSize);
-      const results = await Promise.all(
-        batch.map(async (file) => {
-          const content = await fetchGitHubFile(owner, repo, file.path, accessToken);
-          return { path: file.path, content };
-        })
-      );
-      for (const r of results) {
-        if (r.content) {
-          const filePath = path.join(tmpDir, r.path);
-          mkdirpSync(path.dirname(filePath));
-          fs.writeFileSync(filePath, r.content);
-          filesWritten++;
-        }
-      }
+    for (const file of files) {
+      const filePath = path.join(tmpDir, file.path);
+      mkdirpSync(path.dirname(filePath));
+      fs.writeFileSync(filePath, file.content);
     }
 
     // Run repomix pack
@@ -172,7 +132,7 @@ export async function POST(
       success: true,
       content,
       meta: {
-        filesIncluded: result.totalFiles || filesWritten,
+        filesIncluded: result.totalFiles || files.length,
         totalFiles: totalFilesInRepo,
         lines: totalLines,
         chars: totalChars,
