@@ -115,6 +115,41 @@ export async function POST(
     const totalBytes = new TextEncoder().encode(fileContents.map(f => f.content).join("")).byteLength;
     const totalFilesInRepo = tree.filter(i => i.type === "blob").length;
 
+    // Generate per-file summaries via LLM
+    const openaiKey = process.env.OPENAI_API_KEY;
+    let fileSummaries: Record<string, string> = {};
+    if (openaiKey) {
+      try {
+        const fileSnippets = fileContents.map(f => {
+          const firstLines = f.content.split("\n").slice(0, 8).join("\n");
+          return `${f.path}:\n${firstLines}`;
+        }).join("\n---\n");
+
+        const summaryPrompt = `For each file below, write a ONE-LINE summary (max 80 chars) of what it does. Return ONLY valid JSON: { "summaries": { "path": "summary", ... } }\n\n${fileSnippets}`;
+
+        const summaryRes = await fetch("https://api.openai.com/v1/responses", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` },
+          body: JSON.stringify({ model: "gpt-5.2-codex", input: summaryPrompt }),
+        });
+
+        if (summaryRes.ok) {
+          const summaryData = await summaryRes.json();
+          const text = summaryData.output?.map((o: { content?: Array<{ text?: string }> }) =>
+            o.content?.map((c: { text?: string }) => c.text || "").join("") || ""
+          ).join("") || "";
+          const jsonMatch = text.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            fileSummaries = parsed.summaries || parsed;
+          }
+        }
+      } catch (e) {
+        console.error("File summary generation failed:", e);
+        // Continue without summaries
+      }
+    }
+
     // Build repomix-style output with preamble
     let output = "";
 
@@ -160,9 +195,12 @@ export async function POST(
     output += `Estimated tokens: ~${Math.round(totalChars / 4).toLocaleString()}\n`;
     output += `</repository_info>\n\n`;
 
-    // Directory structure
+    // Directory structure with summaries
     output += `<directory_structure>\n`;
-    output += sourceFiles.map((f) => f.path).join("\n");
+    output += sourceFiles.map((f) => {
+      const summary = fileSummaries[f.path];
+      return summary ? `${f.path} — ${summary}` : f.path;
+    }).join("\n");
     output += `\n</directory_structure>\n\n`;
 
     // File contents
@@ -170,7 +208,9 @@ export async function POST(
     for (const file of fileContents) {
       const lang = getLanguageFromExt(file.path);
       const lines = file.content.split("\n").length;
-      output += `<file path="${file.path}" lines="${lines}">\n`;
+      const summary = fileSummaries[file.path] || "";
+      output += `<file path="${file.path}" lines="${lines}"${summary ? ` summary="${summary}"` : ""}>\n`;
+      if (summary) output += `// ${summary}\n`;
       output += `\`\`\`${lang}\n${file.content}\n\`\`\`\n`;
       output += `</file>\n\n`;
     }
