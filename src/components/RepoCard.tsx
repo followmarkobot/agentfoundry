@@ -838,7 +838,7 @@ export default function RepoCard({
           </div>
         )}
 
-        {/* CTA: Single "Analyze" button */}
+        {/* CTA: Single "Scan Repository" button */}
         <div className="mt-4 flex items-center gap-3">
           <button type="button" onClick={handleAnalyze} disabled={isAnalyzing || !accessToken}
             className={`flex flex-1 items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
@@ -852,7 +852,7 @@ export default function RepoCard({
                 </svg>
                 Analyzing...
               </>
-            ) : scanResult ? "Re-analyze" : "Analyze"}
+            ) : "Scan Repository"}
           </button>
           <a href={repo.html_url} target="_blank" rel="noreferrer"
             className="text-sm font-medium text-zinc-500 transition hover:text-zinc-700">
