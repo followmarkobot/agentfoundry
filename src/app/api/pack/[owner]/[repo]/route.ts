@@ -9,9 +9,32 @@ export async function POST(
   { params }: { params: Promise<{ owner: string; repo: string }> }
 ) {
   const { owner, repo } = await params;
+
+  let accessToken: string;
+  try {
+    const body = await request.json();
+    accessToken = body.accessToken;
+    if (!accessToken) return NextResponse.json({ error: "Missing accessToken" }, { status: 400 });
+  } catch {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+
   const outFile = path.join(os.tmpdir(), `repomix-out-${owner}-${repo}-${Date.now()}.xml`);
+  const credScript = path.join(os.tmpdir(), `git-cred-${Date.now()}.sh`);
+  const prevAskPass = process.env.GIT_ASKPASS;
+  const prevPrompt = process.env.GIT_TERMINAL_PROMPT;
 
   try {
+    // Set up git credentials so repomix's clone works with private repos
+    // GIT_ASKPASS is called with a prompt arg — "Username" or "Password"
+    fs.writeFileSync(
+      credScript,
+      `#!/bin/sh\ncase "$1" in\n*sername*) echo "x-access-token";;\n*assword*) echo "${accessToken}";;\nesac`,
+      { mode: 0o755 }
+    );
+    process.env.GIT_ASKPASS = credScript;
+    process.env.GIT_TERMINAL_PROMPT = "0";
+
     // runRemoteAction downloads the repo (archive or git clone) and packs it
     const result = await runRemoteAction(`${owner}/${repo}`, {
       style: "xml",
@@ -55,7 +78,13 @@ export async function POST(
       { status: 500 }
     );
   } finally {
+    // Restore env and clean up credential script
+    if (prevAskPass === undefined) delete process.env.GIT_ASKPASS;
+    else process.env.GIT_ASKPASS = prevAskPass;
+    if (prevPrompt === undefined) delete process.env.GIT_TERMINAL_PROMPT;
+    else process.env.GIT_TERMINAL_PROMPT = prevPrompt;
     try {
+      if (fs.existsSync(credScript)) fs.unlinkSync(credScript);
       if (fs.existsSync(outFile)) fs.unlinkSync(outFile);
     } catch { /* ignore */ }
   }
