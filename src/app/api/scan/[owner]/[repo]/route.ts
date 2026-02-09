@@ -35,12 +35,14 @@ interface ScanResult {
     description: string;
     impact: "high" | "medium" | "low";
     effort: string;
+    relevant_files: string[];
   };
   secondary_recommendations: Array<{
     title: string;
     description: string;
     impact: "high" | "medium" | "low";
     effort: string;
+    relevant_files: string[];
   }>;
 }
 
@@ -224,14 +226,16 @@ Return this exact JSON structure:
     "title": "short title",
     "description": "what and why",
     "impact": "high|medium|low",
-    "effort": "hours estimate"
+    "effort": "hours estimate",
+    "relevant_files": ["src/path/to/file.ts", "src/other/file.ts"]
   },
   "secondary_recommendations": [
     {
       "title": "short title",
       "description": "what and why", 
       "impact": "high|medium|low",
-      "effort": "hours estimate"
+      "effort": "hours estimate",
+      "relevant_files": ["src/path/to/file.ts", "src/other/file.ts"]
     }
   ]
 }
@@ -243,7 +247,9 @@ Stage definitions:
 - growth: Active development, gaining users/features
 - mature: Stable, well-maintained, production-ready
 
-Include 2-3 secondary recommendations. Be specific and actionable.`;
+Include 2-3 secondary recommendations. Be specific and actionable.
+
+For each recommendation, include 3-5 relevant file paths from the codebase that relate to this recommendation. Use actual file paths from the file tree above.`;
 
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",

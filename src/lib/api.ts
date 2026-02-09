@@ -1,20 +1,18 @@
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || "";
 
+export type Recommendation = {
+  title: string;
+  description: string;
+  impact: "high" | "medium" | "low";
+  effort: string;
+  relevant_files: string[];
+};
+
 export type ScanResult = {
   stage: "idea" | "prototype" | "mvp" | "growth" | "mature";
   stage_reasoning: string;
-  top_recommendation: {
-    title: string;
-    description: string;
-    impact: "high" | "medium" | "low";
-    effort: string;
-  };
-  secondary_recommendations: Array<{
-    title: string;
-    description: string;
-    impact: "high" | "medium" | "low";
-    effort: string;
-  }>;
+  top_recommendation: Recommendation;
+  secondary_recommendations: Recommendation[];
 };
 
 export type ScanResponse = {
@@ -62,6 +60,36 @@ export async function packRepository(
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "Pack failed");
+  return data;
+}
+
+export type ChatRequest = {
+  recommendation: Recommendation;
+  userMessage: string;
+  relevantFiles: string[];
+  repoContext: {
+    owner: string;
+    repo: string;
+    stage: string;
+    stageReasoning: string;
+    accessToken: string;
+  };
+};
+
+export type ChatResponse = {
+  reply: string;
+};
+
+export async function chatAboutRecommendation(
+  params: ChatRequest
+): Promise<ChatResponse> {
+  const res = await fetch(`${BASE_URL}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Chat failed");
   return data;
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef } from "react";
-import { scanRepository, createIssue, packRepository, type ScanResponse, type PackResponse } from "@/lib/api";
+import { scanRepository, createIssue, packRepository, chatAboutRecommendation, type ScanResponse, type PackResponse, type Recommendation } from "@/lib/api";
 
 export type Repo = {
   id: number;
@@ -63,6 +63,76 @@ function getImpactColor(impact: string): string {
     low: "text-green-600 bg-green-50",
   };
   return colors[impact] || "text-zinc-600 bg-zinc-50";
+}
+
+function RecommendationChat({
+  recommendation,
+  owner,
+  repo,
+  stage,
+  stageReasoning,
+  accessToken,
+}: {
+  recommendation: Recommendation;
+  owner: string;
+  repo: string;
+  stage: string;
+  stageReasoning: string;
+  accessToken: string;
+}) {
+  const [message, setMessage] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [replies, setReplies] = useState<Array<{ user: string; ai: string }>>([]);
+
+  async function handleSend() {
+    const text = message.trim();
+    if (!text || isLoading) return;
+    setMessage("");
+    setIsLoading(true);
+    try {
+      const data = await chatAboutRecommendation({
+        recommendation,
+        userMessage: text,
+        relevantFiles: recommendation.relevant_files,
+        repoContext: { owner, repo, stage, stageReasoning, accessToken },
+      });
+      setReplies((prev) => [...prev, { user: text, ai: data.reply }]);
+    } catch (err) {
+      setReplies((prev) => [...prev, { user: text, ai: `Error: ${err instanceof Error ? err.message : "Failed"}` }]);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 border-t border-zinc-100 pt-3">
+      {replies.map((r, i) => (
+        <div key={i} className="mb-3 space-y-1">
+          <p className="text-xs text-zinc-500"><span className="font-medium text-zinc-700">You:</span> {r.user}</p>
+          <div className="text-xs text-zinc-700 bg-blue-50 rounded-md p-2 whitespace-pre-wrap">{r.ai}</div>
+        </div>
+      ))}
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") handleSend(); }}
+          placeholder="Ask about this recommendation..."
+          className="flex-1 rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-800 placeholder:text-zinc-400 focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+          disabled={isLoading}
+        />
+        <button
+          type="button"
+          onClick={handleSend}
+          disabled={isLoading || !message.trim()}
+          className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isLoading ? "..." : "Send"}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function CreateIssueButton({
@@ -397,6 +467,16 @@ export default function RepoCard({
                 onCreateIssue={handleCreateIssue}
               />
             </div>
+            {accessToken && (
+              <RecommendationChat
+                recommendation={scanResult.analysis.top_recommendation}
+                owner={repo.owner.login}
+                repo={repo.name}
+                stage={scanResult.analysis.stage}
+                stageReasoning={scanResult.analysis.stage_reasoning}
+                accessToken={accessToken}
+              />
+            )}
           </div>
 
           {/* Secondary Recommendations (Collapsible) */}
@@ -455,6 +535,16 @@ export default function RepoCard({
                             onCreateIssue={handleCreateIssue}
                           />
                         </div>
+                        {accessToken && (
+                          <RecommendationChat
+                            recommendation={rec}
+                            owner={repo.owner.login}
+                            repo={repo.name}
+                            stage={scanResult.analysis.stage}
+                            stageReasoning={scanResult.analysis.stage_reasoning}
+                            accessToken={accessToken}
+                          />
+                        )}
                       </div>
                     )
                   )}
