@@ -120,35 +120,61 @@ export async function POST(
 
     // Preamble
     output += `This file is a merged representation of the entire codebase, combined into a single document by AgentFoundry.\n\n`;
-    output += `================================================================\n`;
-    output += `Repository: ${owner}/${repo}\n`;
-    output += `================================================================\n\n`;
-    output += `## How to Use This File\n\n`;
-    output += `This file contains the complete source code of the repository in a format optimized for AI consumption.\n`;
-    output += `You can paste this into any LLM (ChatGPT, Claude, Gemini, etc.) and ask questions about the codebase,\n`;
-    output += `request code reviews, ask for refactoring suggestions, or generate documentation.\n\n`;
-    output += `## Repository Stats\n\n`;
-    output += `- **Files included:** ${fileContents.length} / ${totalFilesInRepo} total\n`;
-    output += `- **Lines of code:** ${totalLines.toLocaleString()}\n`;
-    output += `- **Characters:** ${totalChars.toLocaleString()}\n`;
-    output += `- **Words:** ${totalWords.toLocaleString()}\n`;
-    output += `- **Size:** ${(totalBytes / 1024).toFixed(1)} KB\n`;
-    output += `- **Estimated tokens:** ~${Math.round(totalChars / 4).toLocaleString()}\n\n`;
+    output += `<file_summary>\n`;
+    output += `This section contains a summary of this file.\n\n`;
+    output += `<purpose>\n`;
+    output += `This file contains a packed representation of the entire repository's contents.\n`;
+    output += `It is designed to be easily consumable by AI systems for analysis, code review,\n`;
+    output += `or other automated processes.\n`;
+    output += `</purpose>\n\n`;
+    output += `<file_format>\n`;
+    output += `The content is organized as follows:\n`;
+    output += `1. This summary section\n`;
+    output += `2. Repository information and stats\n`;
+    output += `3. Directory structure\n`;
+    output += `4. Multiple file entries, each consisting of:\n`;
+    output += `   - File path as a header\n`;
+    output += `   - Full contents of the file\n`;
+    output += `</file_format>\n\n`;
+    output += `<usage_guidelines>\n`;
+    output += `- This file should be treated as read-only. Any changes should be made to the original repository files, not this packed version.\n`;
+    output += `- When processing this file, use the file path to distinguish between different files in the repository.\n`;
+    output += `- Be aware that this file may contain sensitive information. Handle it with the same level of security as you would the original repository.\n`;
+    output += `</usage_guidelines>\n\n`;
+    output += `<notes>\n`;
+    output += `- Some files may have been excluded based on .gitignore rules and AgentFoundry's configuration\n`;
+    output += `- Binary files are not included in this packed representation\n`;
+    output += `- Lock files (package-lock.json, yarn.lock, etc.) are excluded\n`;
+    output += `- Files in node_modules, .git, dist, build, .next, .vercel are excluded\n`;
+    output += `</notes>\n`;
+    output += `</file_summary>\n\n`;
 
-    // File tree
-    output += `## File Tree\n\n`;
-    output += "```\n";
+    // Repository info
+    output += `<repository_info>\n`;
+    output += `Repository: ${owner}/${repo}\n`;
+    output += `Files included: ${fileContents.length} / ${totalFilesInRepo}\n`;
+    output += `Lines of code: ${totalLines.toLocaleString()}\n`;
+    output += `Characters: ${totalChars.toLocaleString()}\n`;
+    output += `Words: ${totalWords.toLocaleString()}\n`;
+    output += `Size: ${(totalBytes / 1024).toFixed(1)} KB\n`;
+    output += `Estimated tokens: ~${Math.round(totalChars / 4).toLocaleString()}\n`;
+    output += `</repository_info>\n\n`;
+
+    // Directory structure
+    output += `<directory_structure>\n`;
     output += sourceFiles.map((f) => f.path).join("\n");
-    output += "\n```\n\n";
+    output += `\n</directory_structure>\n\n`;
 
     // File contents
-    output += `## Source Files\n\n`;
+    output += `<repository_files>\n\n`;
     for (const file of fileContents) {
       const lang = getLanguageFromExt(file.path);
       const lines = file.content.split("\n").length;
-      output += `### ${file.path} (${lines} lines)\n\n`;
-      output += `\`\`\`${lang}\n${file.content}\n\`\`\`\n\n`;
+      output += `<file path="${file.path}" lines="${lines}">\n`;
+      output += `\`\`\`${lang}\n${file.content}\n\`\`\`\n`;
+      output += `</file>\n\n`;
     }
+    output += `</repository_files>\n`;
 
     return NextResponse.json({
       success: true,
