@@ -618,7 +618,7 @@ export default function RepoCard({
           <img src={repo.owner.avatar_url} alt={repo.owner.login} className="h-12 w-12 rounded-full" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <h3 className="text-base font-semibold text-zinc-900 truncate">{repo.name}</h3>
+              <h3 className="text-base font-semibold text-zinc-900 truncate max-w-[200px]" title={repo.name}>{repo.name}</h3>
               {isPinned && (
                 <span className="text-green-600" title="Pinned">
                   <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>
