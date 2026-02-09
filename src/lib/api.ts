@@ -45,7 +45,15 @@ export async function scanRepository(
 export type PackResponse = {
   success: boolean;
   content: string;
-  meta: { filesIncluded: number; totalFiles: number };
+  meta: {
+    filesIncluded: number;
+    totalFiles: number;
+    lines?: number;
+    chars?: number;
+    words?: number;
+    sizeKB?: number;
+    estimatedTokens?: number;
+  };
 };
 
 export async function packRepository(

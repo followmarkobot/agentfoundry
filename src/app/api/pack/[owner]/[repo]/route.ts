@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { pack } from "repomix";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import * as os from "node:os";
 
 const SOURCE_EXTENSIONS = [
   ".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".rs", ".rb", ".java",
@@ -25,24 +29,9 @@ interface GitHubTreeItem {
   size?: number;
 }
 
-function getLanguageFromExt(path: string): string {
-  const ext = path.split(".").pop() || "";
-  const map: Record<string, string> = {
-    ts: "typescript", tsx: "tsx", js: "javascript", jsx: "jsx",
-    py: "python", go: "go", rs: "rust", rb: "ruby", java: "java",
-    c: "c", cpp: "cpp", h: "c", hpp: "cpp", cs: "csharp",
-    swift: "swift", kt: "kotlin", scala: "scala", vue: "vue",
-    svelte: "svelte", astro: "astro", md: "markdown", mdx: "mdx",
-    json: "json", yaml: "yaml", yml: "yaml", toml: "toml",
-    sql: "sql", graphql: "graphql", prisma: "prisma",
-    sh: "bash", bash: "bash", zsh: "bash",
-  };
-  return map[ext] || "";
-}
-
-async function fetchGitHubFile(owner: string, repo: string, path: string, token: string): Promise<string | null> {
+async function fetchGitHubFile(owner: string, repo: string, filePath: string, token: string): Promise<string | null> {
   try {
-    const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
+    const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`, {
       headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github.v3.raw" },
     });
     if (!res.ok) return null;
@@ -59,20 +48,24 @@ async function fetchFileTree(owner: string, repo: string, token: string): Promis
   return data.tree || [];
 }
 
-function shouldIncludeFile(path: string): boolean {
+function shouldIncludeFile(filePath: string): boolean {
   for (const pattern of SKIP_PATTERNS) {
-    if (path.includes(`/${pattern}/`) || path.startsWith(`${pattern}/`)) return false;
+    if (filePath.includes(`/${pattern}/`) || filePath.startsWith(`${pattern}/`)) return false;
   }
-  const filename = path.split("/").pop() || "";
+  const filename = filePath.split("/").pop() || "";
   if (SKIP_FILES.includes(filename)) return false;
   const binaryExtensions = [".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".eot", ".mp3", ".mp4", ".webm", ".pdf", ".zip", ".tar", ".gz"];
   for (const ext of binaryExtensions) {
-    if (path.toLowerCase().endsWith(ext)) return false;
+    if (filePath.toLowerCase().endsWith(ext)) return false;
   }
   for (const ext of SOURCE_EXTENSIONS) {
-    if (path.endsWith(ext)) return true;
+    if (filePath.endsWith(ext)) return true;
   }
   return false;
+}
+
+function mkdirpSync(dir: string) {
+  fs.mkdirSync(dir, { recursive: true });
 }
 
 export async function POST(
@@ -90,107 +83,112 @@ export async function POST(
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
+  const tmpDir = path.join(os.tmpdir(), `repomix-${owner}-${repo}-${Date.now()}`);
+  const outFile = path.join(os.tmpdir(), `repomix-out-${owner}-${repo}-${Date.now()}.xml`);
+
   try {
+    // Fetch file tree from GitHub
     const tree = await fetchFileTree(owner, repo, accessToken);
+    const totalFilesInRepo = tree.filter(i => i.type === "blob").length;
     const sourceFiles = tree.filter((item) => item.type === "blob" && shouldIncludeFile(item.path)).slice(0, 100);
 
-    const fileContents: Array<{ path: string; content: string }> = [];
+    // Download files to /tmp
+    mkdirpSync(tmpDir);
     const batchSize = 10;
+    let filesWritten = 0;
 
     for (let i = 0; i < sourceFiles.length; i += batchSize) {
       const batch = sourceFiles.slice(i, i + batchSize);
       const results = await Promise.all(
         batch.map(async (file) => {
           const content = await fetchGitHubFile(owner, repo, file.path, accessToken);
-          return { path: file.path, content: content || "" };
+          return { path: file.path, content };
         })
       );
-      fileContents.push(...results.filter((r) => r.content));
+      for (const r of results) {
+        if (r.content) {
+          const filePath = path.join(tmpDir, r.path);
+          mkdirpSync(path.dirname(filePath));
+          fs.writeFileSync(filePath, r.content);
+          filesWritten++;
+        }
+      }
     }
 
-    // Calculate stats
-    const totalLines = fileContents.reduce((sum, f) => sum + f.content.split("\n").length, 0);
-    const totalChars = fileContents.reduce((sum, f) => sum + f.content.length, 0);
-    const totalWords = fileContents.reduce((sum, f) => sum + f.content.split(/\s+/).filter(Boolean).length, 0);
-    const totalBytes = new TextEncoder().encode(fileContents.map(f => f.content).join("")).byteLength;
-    const totalFilesInRepo = tree.filter(i => i.type === "blob").length;
+    // Run repomix pack
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const repomixConfig: any = {
+      cwd: tmpDir,
+      input: { maxFileSize: 50 * 1024 * 1024 },
+      output: {
+        filePath: outFile,
+        style: "xml",
+        parsableStyle: false,
+        fileSummary: true,
+        directoryStructure: true,
+        files: true,
+        removeComments: false,
+        removeEmptyLines: false,
+        compress: false,
+        topFilesLength: 5,
+        showLineNumbers: false,
+        truncateBase64: false,
+        copyToClipboard: false,
+        includeFullDirectoryStructure: false,
+        tokenCountTree: false,
+        git: {
+          sortByChanges: false,
+          sortByChangesMaxCommits: 100,
+          includeDiffs: false,
+          includeLogs: false,
+          includeLogsCount: 0,
+        },
+      },
+      include: [],
+      ignore: {
+        useGitignore: false,
+        useDotIgnore: false,
+        useDefaultPatterns: true,
+        customPatterns: [],
+      },
+      security: { enableSecurityCheck: false },
+      tokenCount: { encoding: "cl100k_base" },
+    };
+    const result = await pack([tmpDir], repomixConfig);
 
-    // Build repomix-style output with preamble
-    let output = "";
-
-    // Preamble
-    output += `This file is a merged representation of the entire codebase, combined into a single document by AgentFoundry.\n\n`;
-    output += `<file_summary>\n`;
-    output += `This section contains a summary of this file.\n\n`;
-    output += `<purpose>\n`;
-    output += `This file contains a packed representation of the entire repository's contents.\n`;
-    output += `It is designed to be easily consumable by AI systems for analysis, code review,\n`;
-    output += `or other automated processes.\n`;
-    output += `</purpose>\n\n`;
-    output += `<file_format>\n`;
-    output += `The content is organized as follows:\n`;
-    output += `1. This summary section\n`;
-    output += `2. Repository information and stats\n`;
-    output += `3. Directory structure\n`;
-    output += `4. Multiple file entries, each consisting of:\n`;
-    output += `   - File path as a header\n`;
-    output += `   - Full contents of the file\n`;
-    output += `</file_format>\n\n`;
-    output += `<usage_guidelines>\n`;
-    output += `- This file should be treated as read-only. Any changes should be made to the original repository files, not this packed version.\n`;
-    output += `- When processing this file, use the file path to distinguish between different files in the repository.\n`;
-    output += `- Be aware that this file may contain sensitive information. Handle it with the same level of security as you would the original repository.\n`;
-    output += `</usage_guidelines>\n\n`;
-    output += `<notes>\n`;
-    output += `- Some files may have been excluded based on .gitignore rules and AgentFoundry's configuration\n`;
-    output += `- Binary files are not included in this packed representation\n`;
-    output += `- Lock files (package-lock.json, yarn.lock, etc.) are excluded\n`;
-    output += `- Files in node_modules, .git, dist, build, .next, .vercel are excluded\n`;
-    output += `</notes>\n`;
-    output += `</file_summary>\n\n`;
-
-    // Repository info
-    output += `<repository_info>\n`;
-    output += `Repository: ${owner}/${repo}\n`;
-    output += `Files included: ${fileContents.length} / ${totalFilesInRepo}\n`;
-    output += `Lines of code: ${totalLines.toLocaleString()}\n`;
-    output += `Characters: ${totalChars.toLocaleString()}\n`;
-    output += `Words: ${totalWords.toLocaleString()}\n`;
-    output += `Size: ${(totalBytes / 1024).toFixed(1)} KB\n`;
-    output += `Estimated tokens: ~${Math.round(totalChars / 4).toLocaleString()}\n`;
-    output += `</repository_info>\n\n`;
-
-    // Directory structure
-    output += `<directory_structure>\n`;
-    output += sourceFiles.map((f) => f.path).join("\n");
-    output += `\n</directory_structure>\n\n`;
-
-    // File contents
-    output += `<repository_files>\n\n`;
-    for (const file of fileContents) {
-      const lang = getLanguageFromExt(file.path);
-      const lines = file.content.split("\n").length;
-      output += `<file path="${file.path}" lines="${lines}">\n`;
-      output += `\`\`\`${lang}\n${file.content}\n\`\`\`\n`;
-      output += `</file>\n\n`;
+    // Read the output
+    let content = "";
+    if (fs.existsSync(outFile)) {
+      content = fs.readFileSync(outFile, "utf8");
     }
-    output += `</repository_files>\n`;
+
+    // Calculate stats from result + content
+    const totalChars = content.length;
+    const totalLines = content.split("\n").length;
+    const totalWords = content.split(/\s+/).filter(Boolean).length;
+    const totalBytes = Buffer.byteLength(content, "utf8");
 
     return NextResponse.json({
       success: true,
-      content: output,
+      content,
       meta: {
-        filesIncluded: fileContents.length,
+        filesIncluded: result.totalFiles || filesWritten,
         totalFiles: totalFilesInRepo,
         lines: totalLines,
         chars: totalChars,
         words: totalWords,
         sizeKB: Math.round(totalBytes / 1024),
-        estimatedTokens: Math.round(totalChars / 4),
+        estimatedTokens: result.totalTokens || Math.round(totalChars / 4),
       },
     });
   } catch (error) {
     console.error("Pack error:", error);
     return NextResponse.json({ error: error instanceof Error ? error.message : "Pack failed" }, { status: 500 });
+  } finally {
+    // Cleanup
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+      if (fs.existsSync(outFile)) fs.unlinkSync(outFile);
+    } catch { /* ignore cleanup errors */ }
   }
 }
