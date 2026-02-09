@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchRepoFiles } from "@/lib/github-tarball";
 
-// File extensions to include
 const SOURCE_EXTENSIONS = [
   ".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".rs", ".rb", ".java",
   ".c", ".cpp", ".h", ".hpp", ".cs", ".swift", ".kt", ".scala",
@@ -9,7 +8,6 @@ const SOURCE_EXTENSIONS = [
   ".toml", ".sql", ".graphql", ".prisma", ".sh", ".bash", ".zsh",
 ];
 
-// Paths/patterns to skip
 const SKIP_PATTERNS = [
   "node_modules", ".git", "dist", "build", ".next", ".vercel",
   "__pycache__", ".pytest_cache", "target", "vendor", ".gradle",
@@ -21,30 +19,9 @@ const SKIP_FILES = [
   "Cargo.lock", "Gemfile.lock", "poetry.lock", "composer.lock",
 ];
 
-interface ScanResult {
-  stage: "idea" | "prototype" | "mvp" | "growth" | "mature";
-  stage_reasoning: string;
-  top_recommendation: {
-    title: string;
-    description: string;
-    impact: "high" | "medium" | "low";
-    effort: string;
-    relevant_files: string[];
-  };
-  secondary_recommendations: Array<{
-    title: string;
-    description: string;
-    impact: "high" | "medium" | "low";
-    effort: string;
-    relevant_files: string[];
-  }>;
-}
-
 function shouldIncludeFile(filePath: string): boolean {
   for (const pattern of SKIP_PATTERNS) {
-    if (filePath.includes(`/${pattern}/`) || filePath.startsWith(`${pattern}/`)) {
-      return false;
-    }
+    if (filePath.includes(`/${pattern}/`) || filePath.startsWith(`${pattern}/`)) return false;
   }
   const filename = filePath.split("/").pop() || "";
   if (SKIP_FILES.includes(filename)) return false;
@@ -64,69 +41,64 @@ export async function POST(
 ) {
   const { owner, repo } = await params;
 
-  // Get token from request body
   let accessToken: string;
+  let includePack = false;
   try {
     const body = await request.json();
     accessToken = body.accessToken;
+    includePack = body.includePack === true;
     if (!accessToken) {
-      return NextResponse.json(
-        { error: "Missing accessToken in request body" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing accessToken in request body" }, { status: 400 });
     }
   } catch {
-    return NextResponse.json(
-      { error: "Invalid request body" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  // Check for OpenAI API key
   const openaiKey = process.env.OPENAI_API_KEY;
   if (!openaiKey) {
-    return NextResponse.json(
-      { error: "OPENAI_API_KEY not configured" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "OPENAI_API_KEY not configured" }, { status: 500 });
   }
 
   try {
-    // Download entire repo as tarball (1 API call) and stream-extract
     const { files: allFiles, totalFiles: totalFilesInRepo } = await fetchRepoFiles(
       owner, repo, accessToken, shouldIncludeFile, 50
     );
 
-    // Separate out README and package.json for prominent display
     const readme = allFiles.find(f => f.path === "README.md")?.content;
     const packageJson = allFiles.find(f => f.path === "package.json")?.content;
-    const fileContents = allFiles;
 
-    // Build concatenated content
     let concatenated = "";
-
-    if (readme) {
-      concatenated += `=== README.md ===\n${readme}\n\n`;
-    }
-
-    if (packageJson) {
-      concatenated += `=== package.json ===\n${packageJson}\n\n`;
-    }
-
+    if (readme) concatenated += `=== README.md ===\n${readme}\n\n`;
+    if (packageJson) concatenated += `=== package.json ===\n${packageJson}\n\n`;
     concatenated += `=== File Tree (${totalFilesInRepo} items) ===\n`;
     concatenated += allFiles.map(f => f.path).join("\n");
     concatenated += "\n\n";
-
-    for (const file of fileContents) {
+    for (const file of allFiles) {
       concatenated += `=== ${file.path} ===\n${file.content}\n\n`;
     }
-
-    // Limit total size to ~200KB for GPT
     if (concatenated.length > 200000) {
       concatenated = concatenated.slice(0, 200000) + "\n\n[TRUNCATED]";
     }
 
-    // Call OpenAI Responses API (required for gpt-5.2-codex)
+    // Build pack content if requested
+    let packContent: string | undefined;
+    let packMeta: Record<string, number> | undefined;
+    if (includePack) {
+      packContent = concatenated;
+      const lines = packContent.split("\n").length;
+      const chars = packContent.length;
+      const words = packContent.split(/\s+/).length;
+      packMeta = {
+        filesIncluded: allFiles.length,
+        totalFiles: totalFilesInRepo,
+        lines,
+        chars,
+        words,
+        sizeKB: Math.round(chars / 1024),
+        estimatedTokens: Math.round(chars / 4),
+      };
+    }
+
     const prompt = `Analyze this codebase and return ONLY valid JSON (no markdown, no code blocks, just raw JSON):
 
 ${concatenated}
@@ -135,20 +107,21 @@ Return this exact JSON structure:
 {
   "stage": "idea|prototype|mvp|growth|mature",
   "stage_reasoning": "why this stage",
+  "optimization_goal": "a short phrase describing what the developer is likely optimizing for, e.g. 'Shipping an MVP fast', 'Reducing production risk', 'Developer experience', 'Scaling for growth'",
   "top_recommendation": {
     "title": "short title",
     "description": "what and why",
     "impact": "high|medium|low",
     "effort": "hours estimate",
-    "relevant_files": ["src/path/to/file.ts", "src/other/file.ts"]
+    "relevant_files": ["src/path/to/file.ts"]
   },
   "secondary_recommendations": [
     {
       "title": "short title",
-      "description": "what and why", 
+      "description": "what and why",
       "impact": "high|medium|low",
       "effort": "hours estimate",
-      "relevant_files": ["src/path/to/file.ts", "src/other/file.ts"]
+      "relevant_files": ["src/path/to/file.ts"]
     }
   ]
 }
@@ -161,8 +134,8 @@ Stage definitions:
 - mature: Stable, well-maintained, production-ready
 
 Include 2-3 secondary recommendations. Be specific and actionable.
-
-For each recommendation, include 3-5 relevant file paths from the codebase that relate to this recommendation. Use actual file paths from the file tree above.`;
+For each recommendation, include 3-5 relevant file paths from the codebase.
+The optimization_goal should be inferred from the codebase structure, README, and current state.`;
 
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
@@ -170,10 +143,7 @@ For each recommendation, include 3-5 relevant file paths from the codebase that 
         "Content-Type": "application/json",
         "Authorization": `Bearer ${openaiKey}`,
       },
-      body: JSON.stringify({
-        model: "gpt-5.2-codex",
-        input: prompt,
-      }),
+      body: JSON.stringify({ model: "gpt-5.2-codex", input: prompt }),
     });
 
     if (!response.ok) {
@@ -183,36 +153,36 @@ For each recommendation, include 3-5 relevant file paths from the codebase that 
     }
 
     const data = await response.json();
-
-    // Extract text from Responses API format: data.output[1].content[0].text
     const messageOutput = data.output?.find((o: { type: string }) => o.type === "message");
     const responseText = messageOutput?.content?.[0]?.text || "";
 
-    // Parse JSON from response
-    let result: ScanResult;
+    let result;
     try {
-      // Try to extract JSON from the response (handle potential markdown wrapping)
       const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error("No JSON found in response");
-      }
+      if (!jsonMatch) throw new Error("No JSON found in response");
       result = JSON.parse(jsonMatch[0]);
-    } catch (parseError) {
+    } catch {
       console.error("Failed to parse OpenAI response:", responseText);
-      return NextResponse.json(
-        { error: "Failed to parse analysis result" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Failed to parse analysis result" }, { status: 500 });
     }
 
-    return NextResponse.json({
+    // Ensure optimization_goal exists
+    if (!result.optimization_goal) {
+      result.optimization_goal = "General improvement";
+    }
+
+    const responseBody: Record<string, unknown> = {
       success: true,
       analysis: result,
-      meta: {
-        filesScanned: fileContents.length,
-        totalFiles: totalFilesInRepo,
-      },
-    });
+      meta: { filesScanned: allFiles.length, totalFiles: totalFilesInRepo },
+    };
+
+    if (includePack && packContent) {
+      responseBody.packContent = packContent;
+      responseBody.packMeta = packMeta;
+    }
+
+    return NextResponse.json(responseBody);
   } catch (error) {
     console.error("Scan error:", error);
     return NextResponse.json(
